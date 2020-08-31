@@ -18,7 +18,7 @@ import { Transform } from 'stream'
 import Crypto from 'crypto'
 import * as querystring from 'querystring'
 
-const maxRetries = 10
+const maxRetries = 30
 
 // We extend Transform because Writable does not implement ._flush().
 export default class ObjectUploader extends Transform {
