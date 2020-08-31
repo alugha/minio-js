@@ -125,29 +125,61 @@ export default class ObjectUploader extends Transform {
         this._transform(chunk, encoding, callback)
       })
 
+
+      let retries1 = 0
+      let timeout1 = 0
       // Check for an incomplete previous upload.
-      this.client.findUploadId(this.bucketName, this.objectName, (err, id) => {
-        if (err) return this.emit('error', err)
+      const reqFunc1 = () => this.client.findUploadId(this.bucketName, this.objectName, (err, id) => {
+        if (err) {
+          if (retries1 < maxRetries) {
+            retries1 += 1
+            timeout1 += 3000
+            setTimeout(reqFunc1, timeout1)
+            return
+          }
+          return this.emit('error', err)
+        }
 
         // If no upload ID exists, initiate a new one.
         if (!id) {
-          this.client.initiateNewMultipartUpload(this.bucketName, this.objectName, this.metaData, (err, id) => {
-            if (err) return callback(err)
+          let retries2 = 0
+          let timeout2 = 0
+          const reqFunc2 = () => this.client.initiateNewMultipartUpload(this.bucketName, this.objectName, this.metaData, (err, id) => {
+            if (err) {
+              if (retries2 < maxRetries) {
+                retries2 += 1
+                timeout2 += 3000
+                setTimeout(reqFunc2, timeout2)
+                return
+              }
+              return callback(err)
+            }
 
             this.id = id
 
             // We are now ready to accept new chunks — this will flush the buffered chunk.
             this.emit('ready')
           })
+          reqFunc2()
 
           return
         }
 
         this.id = id
 
+        let retries3 = 0
+        let timeout3 = 0
         // Retrieve the pre-uploaded parts, if we need to resume the upload.
-        this.client.listParts(this.bucketName, this.objectName, id, (err, etags) => {
-          if (err) return this.emit('error', err)
+        const reqFunc3 = () => this.client.listParts(this.bucketName, this.objectName, id, (err, etags) => {
+          if (err) {
+            if (retries3 < maxRetries) {
+              retries3 += 1
+              timeout3 += 3000
+              setTimeout(reqFunc3, timeout3)
+              return
+            }
+            return this.emit('error', err)
+          }
 
           // It is possible for no parts to be already uploaded.
           if (!etags) etags = []
@@ -162,7 +194,9 @@ export default class ObjectUploader extends Transform {
 
           this.emit('ready')
         })
+        reqFunc3()
       })
+      reqFunc1()
 
       return
     }
@@ -201,14 +235,14 @@ export default class ObjectUploader extends Transform {
       objectName: this.objectName
     }
 
-    let retries = 0
-    let timeout = 0
-    const reqFunc = () => this.client.makeRequest(options, chunk, 200, '', true, (err, response) => {
+    let retries4 = 0
+    let timeout4 = 0
+    const reqFunc4 = () => this.client.makeRequest(options, chunk, 200, '', true, (err, response) => {
       if (err) {
-        if (retries < maxRetries) {
-          retries += 1
-          timeout += 3000
-          setTimeout(reqFunc, timeout)
+        if (retries4 < maxRetries) {
+          retries4 += 1
+          timeout4 += 3000
+          setTimeout(reqFunc4, timeout4)
           return
         }
         return callback(err)
@@ -227,7 +261,7 @@ export default class ObjectUploader extends Transform {
       // We're ready for the next chunk.
       callback()
     })
-    reqFunc()
+    reqFunc4()
   }
 
   _flush(callback) {
@@ -241,14 +275,14 @@ export default class ObjectUploader extends Transform {
         objectName: this.objectName
       }
 
-      let retries = 0
-      let timeout = 0
-      const reqFunc = () => this.client.makeRequest(options, '', 200, '', true, (err, response) => {
+      let retries5 = 0
+      let timeout5 = 0
+      const reqFunc5 = () => this.client.makeRequest(options, '', 200, '', true, (err, response) => {
         if (err) {
-          if (retries < maxRetries) {
-            retries += 1
-            timeout += 3000
-            setTimeout(reqFunc, timeout)
+          if (retries5 < maxRetries) {
+            retries5 += 1
+            timeout5 += 3000
+            setTimeout(reqFunc5, timeout5)
             return
           }
           return callback(err)
@@ -270,7 +304,7 @@ export default class ObjectUploader extends Transform {
         // Because we're sure the stream has ended, allow it to flush and end.
         callback()
       })
-      reqFunc()
+      reqFunc5()
 
       return
     }
@@ -279,19 +313,31 @@ export default class ObjectUploader extends Transform {
       return
     }
 
+
+    let retries6 = 0
+    let timeout6 = 0
     // This is called when all of the chunks uploaded successfully, thus
     // completing the multipart upload.
-    this.client.completeMultipartUpload(this.bucketName, this.objectName, this.id,
-                                        this.etags, (err, etag) => {
-                                          if (err) return callback(err)
+    const reqFunc6 = () => this.client.completeMultipartUpload(this.bucketName, this.objectName, this.id,
+                                                               this.etags, (err, etag) => {
+                                                                 if (err) {
+                                                                   if (retries6 < maxRetries) {
+                                                                     retries6 += 1
+                                                                     timeout6 += 3000
+                                                                     setTimeout(reqFunc6, timeout6)
+                                                                     return
+                                                                   }
+                                                                   return callback(err)
+                                                                 }
 
-                                          // Call our callback on the next tick to allow the streams infrastructure
-                                          // to finish what its doing before we continue.
-                                          process.nextTick(() => {
-                                            this.callback(null, etag)
-                                          })
+                                                                 // Call our callback on the next tick to allow the streams infrastructure
+                                                                 // to finish what its doing before we continue.
+                                                                 process.nextTick(() => {
+                                                                   this.callback(null, etag)
+                                                                 })
 
-                                          callback()
-                                        })
+                                                                 callback()
+                                                               })
+    reqFunc6()
   }
 }
