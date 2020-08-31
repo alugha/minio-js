@@ -18,6 +18,8 @@ import { Transform } from 'stream'
 import Crypto from 'crypto'
 import * as querystring from 'querystring'
 
+const maxRetries = 10
+
 // We extend Transform because Writable does not implement ._flush().
 export default class ObjectUploader extends Transform {
   constructor(client, bucketName, objectName, partSize, metaData, callback) {
@@ -80,8 +82,18 @@ export default class ObjectUploader extends Transform {
         objectName: this.objectName
       }
 
-      this.client.makeRequest(options, chunk, 200, '', true, (err, response) => {
-        if (err) return callback(err)
+      let retries = 0
+      let timeout = 0
+      const reqFunc = () => this.client.makeRequest(options, chunk, 200, '', true, (err, response) => {
+        if (err) {
+          if (retries < maxRetries) {
+            retries += 1
+            timeout += 3000
+            setTimeout(reqFunc, timeout)
+            return
+          }
+          return callback(err)
+        }
 
         let etag = response.headers.etag
         if (etag) {
@@ -100,6 +112,7 @@ export default class ObjectUploader extends Transform {
         // Because we're sure the stream has ended, allow it to flush and end.
         callback()
       })
+      reqFunc()
 
       return
     }
@@ -188,8 +201,18 @@ export default class ObjectUploader extends Transform {
       objectName: this.objectName
     }
 
-    this.client.makeRequest(options, chunk, 200, '', true, (err, response) => {
-      if (err) return callback(err)
+    let retries = 0
+    let timeout = 0
+    const reqFunc = () => this.client.makeRequest(options, chunk, 200, '', true, (err, response) => {
+      if (err) {
+        if (retries < maxRetries) {
+          retries += 1
+          timeout += 3000
+          setTimeout(reqFunc, timeout)
+          return
+        }
+        return callback(err)
+      }
 
       // In order to aggregate the parts together, we need to collect the etags.
       let etag = response.headers.etag
@@ -204,6 +227,7 @@ export default class ObjectUploader extends Transform {
       // We're ready for the next chunk.
       callback()
     })
+    reqFunc()
   }
 
   _flush(callback) {
@@ -217,8 +241,18 @@ export default class ObjectUploader extends Transform {
         objectName: this.objectName
       }
 
-      this.client.makeRequest(options, '', 200, '', true, (err, response) => {
-        if (err) return callback(err)
+      let retries = 0
+      let timeout = 0
+      const reqFunc = () => this.client.makeRequest(options, '', 200, '', true, (err, response) => {
+        if (err) {
+          if (retries < maxRetries) {
+            retries += 1
+            timeout += 3000
+            setTimeout(reqFunc, timeout)
+            return
+          }
+          return callback(err)
+        }
 
         let etag = response.headers.etag
         if (etag) {
@@ -236,6 +270,7 @@ export default class ObjectUploader extends Transform {
         // Because we're sure the stream has ended, allow it to flush and end.
         callback()
       })
+      reqFunc()
 
       return
     }
